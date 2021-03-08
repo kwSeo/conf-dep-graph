@@ -1,7 +1,7 @@
 ## Getting Started
 
 ```
-go get 
+go get github.com/kwSeo/conf-dep-graph
 ```
 
 ```
