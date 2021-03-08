@@ -1,0 +1,10 @@
+services:
+  - name: node1
+    target_file: example/node1.yaml
+    domain: node1.io
+  - name: node2
+    target_file: example/node2.yaml
+    domain: node2.io
+  - name: node3
+    target_file: example/node3.yaml
+    domain: node3.io

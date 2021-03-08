@@ -1,0 +1,3 @@
+name: test-node2-configuration
+node3:
+  base_url: https://node3.io

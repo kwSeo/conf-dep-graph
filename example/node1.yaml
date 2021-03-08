@@ -1,0 +1,5 @@
+name: test-node1-configuration
+node2:
+  base_url: http://node2.io/api/v1
+node3:
+  base_url: https://node3.io
