@@ -56,6 +56,9 @@ func (t *Topology) AddService(newSvc *Service) {
 		if svc.DependOn(newSvc) {
 			svc.AddDependency(*newSvc)
 		}
+		if newSvc.DependOn(svc) {
+			newSvc.AddDependency(*svc)
+		}
 	}
 	t.services[newSvc.Name] = newSvc
 }
