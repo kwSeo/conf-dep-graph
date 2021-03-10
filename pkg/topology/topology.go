@@ -77,9 +77,15 @@ func (t *Topology) GraphAsPNG() ([]byte, error) {
 		}
 	}
 	for _, svc := range t.services {
-		srcNode := nodes[svc.Name]
+		srcNode, ok := nodes[svc.Name]
+		if !ok {
+			continue
+		}
 		for _, depName := range svc.Deps {
-			dstNode := nodes[depName]
+			dstNode, ok := nodes[depName]
+			if !ok {
+				continue
+			}
 			_, err := graph.CreateEdge("", srcNode, dstNode)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create edge by graphviz")
