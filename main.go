@@ -19,7 +19,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	t := topology.New()
+	t := topology.New(cfg)
 	for _, svc := range cfg.Services {
 		if _, err := svc.LoadTargetFile(); err != nil {
 			log.Fatalln(err)

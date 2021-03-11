@@ -21,7 +21,31 @@ const (
 type PathType int
 
 type Config struct {
+	Layout   string     `yaml:"layout"`
 	Services []*Service `yaml:"services"`
+}
+
+func (c *Config) GetLayout() graphviz.Layout {
+	switch c.Layout {
+	case "circo":
+		return graphviz.CIRCO
+	case "neato":
+		return graphviz.NEATO
+	case "dot":
+		return graphviz.DOT
+	case "fdp":
+		return graphviz.FDP
+	case "osage":
+		return graphviz.OSAGE
+	case "patchwork":
+		return graphviz.PATCHWORK
+	case "sfdp":
+		return graphviz.SFDP
+	case "twopi":
+		return graphviz.TWOPI
+	default:
+		return graphviz.NEATO
+	}
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -38,11 +62,13 @@ func LoadConfig(path string) (*Config, error) {
 }
 
 type Topology struct {
+	cfg      *Config
 	services map[string]*Service
 }
 
-func New() *Topology {
+func New(cfg *Config) *Topology {
 	return &Topology{
+		cfg:      cfg,
 		services: map[string]*Service{},
 	}
 }
@@ -71,6 +97,7 @@ func (t *Topology) GraphAsPNG() ([]byte, error) {
 		return nil, errors.Wrap(err, "failed to create graph by graphviz")
 	}
 	defer util.CloseWithLogOnErr(graph)
+	graph.SetLayout(string(t.cfg.GetLayout()))
 
 	nodes := map[string]*cgraph.Node{}
 	for name := range t.services {
