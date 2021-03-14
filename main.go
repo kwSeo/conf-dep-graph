@@ -11,7 +11,9 @@ import (
 
 func main() {
 	var configFile string
+	var serviceName string
 	flag.StringVar(&configFile, "config-file", "", "configuration file")
+	flag.StringVar(&serviceName, "service", "", "root service name to create a dependency graph")
 	flag.Parse()
 
 	cfg, err := topology.LoadConfig(configFile)
@@ -26,9 +28,18 @@ func main() {
 		}
 		t.AddService(svc)
 	}
-	png, err := t.GraphAsPNG()
-	if err != nil {
-		log.Fatalln(err)
+
+	var png []byte
+	if serviceName == "" {
+		png, err = t.GraphAsPNG()
+		if err != nil {
+			log.Fatalln(err)
+		}
+	} else {
+		png, err = t.ServiceGraphAsPNG(serviceName)
+		if err != nil {
+			log.Fatalln(err)
+		}
 	}
 	if err := ioutil.WriteFile("graph.png", png, os.ModePerm); err != nil {
 		log.Fatalln(err)

@@ -90,43 +90,98 @@ func (t *Topology) AddService(newSvc *Service) {
 }
 
 func (t *Topology) GraphAsPNG() ([]byte, error) {
+	var result []byte
+	if err := t.withGraph(func(g *graphviz.Graphviz, graph *cgraph.Graph) (err error) {
+		nodes := map[string]*cgraph.Node{}
+		for name := range t.services {
+			nodes[name], err = graph.CreateNode(name)
+			if err != nil {
+				return errors.Wrap(err, "failed to create graph node by graphviz")
+			}
+		}
+		for _, svc := range t.services {
+			if err := t.createEdge(graph, nodes, svc); err != nil {
+				return err
+			}
+		}
+		buf := new(bytes.Buffer)
+		if err := g.Render(graph, graphviz.PNG, buf); err != nil {
+			return errors.Wrap(err, "failed to render by graphviz")
+		}
+
+		result = buf.Bytes()
+		return nil
+
+	}); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (t *Topology) ServiceGraphAsPNG(serviceName string) ([]byte, error) {
+	var result []byte
+	if err := t.withGraph(func(g *graphviz.Graphviz, graph *cgraph.Graph) error {
+		svc, ok := t.services[serviceName]
+		if !ok {
+			return errors.Errorf("service not found: %s", serviceName)
+		}
+		nodes := map[string]*cgraph.Node{}
+		node, err := graph.CreateNode(svc.Name)
+		if err != nil {
+			return errors.Wrap(err, "failed to create graph node by graphviz")
+		}
+		nodes[serviceName] = node
+		for _, name := range  svc.Deps {
+			nodes[name], err = graph.CreateNode(name)
+			if err != nil {
+				return errors.Wrap(err, "failed to create graph node by graphviz")
+			}
+		}
+		if err := t.createEdge(graph, nodes, svc); err != nil {
+			return err
+		}
+		buf := new(bytes.Buffer)
+		if err := g.Render(graph, graphviz.PNG, buf); err != nil {
+			return errors.Wrap(err, "failed to render by graphviz")
+		}
+		result = buf.Bytes()
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (t *Topology) createEdge(graph *cgraph.Graph, nodes map[string]*cgraph.Node, svc *Service) error {
+	srcNode, ok := nodes[svc.Name]
+	if !ok {
+		log.Printf("service not found: %s", svc.Name)
+		return nil
+	}
+	for _, depName := range svc.Deps {
+		dstNode, ok := nodes[depName]
+		if !ok {
+			continue
+		}
+		_, err := graph.CreateEdge("", srcNode, dstNode)
+		if err != nil {
+			return errors.Wrap(err, "failed to create edge by graphviz")
+		}
+	}
+	return nil
+}
+
+func (t *Topology) withGraph(f func(*graphviz.Graphviz, *cgraph.Graph) error) error {
 	g := graphviz.New()
 	defer util.CloseWithLogOnErr(g)
 	graph, err := g.Graph()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create graph by graphviz")
+		return errors.Wrap(err, "failed to create graph by graphviz")
 	}
 	defer util.CloseWithLogOnErr(graph)
 	graph.SetLayout(string(t.cfg.GetLayout()))
 
-	nodes := map[string]*cgraph.Node{}
-	for name := range t.services {
-		nodes[name], err = graph.CreateNode(name)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to create graph node by graphviz")
-		}
-	}
-	for _, svc := range t.services {
-		srcNode, ok := nodes[svc.Name]
-		if !ok {
-			continue
-		}
-		for _, depName := range svc.Deps {
-			dstNode, ok := nodes[depName]
-			if !ok {
-				continue
-			}
-			_, err := graph.CreateEdge("", srcNode, dstNode)
-			if err != nil {
-				return nil, errors.Wrap(err, "failed to create edge by graphviz")
-			}
-		}
-	}
-	buf := new(bytes.Buffer)
-	if err := g.Render(graph, graphviz.PNG, buf); err != nil {
-		return nil, errors.Wrap(err, "failed to render by graphviz")
-	}
-	return buf.Bytes(), nil
+	return f(g, graph)
 }
 
 // func (t *Topology) CreateServices() ([]*Service, error) {
