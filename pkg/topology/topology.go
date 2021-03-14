@@ -1,3 +1,4 @@
+// topology package should do refactoring.
 package topology
 
 import (
@@ -17,6 +18,8 @@ const (
 	FILESYSTEM PathType = iota
 	URL
 )
+
+type GraphvizFunc func(g *graphviz.Graphviz, graph *cgraph.Graph) error
 
 type PathType int
 
@@ -90,7 +93,7 @@ func (t *Topology) AddService(newSvc *Service) {
 }
 
 func (t *Topology) GraphAsPNG() ([]byte, error) {
-	var result []byte
+	buf := new(bytes.Buffer)
 	if err := t.withGraph(func(g *graphviz.Graphviz, graph *cgraph.Graph) (err error) {
 		nodes := map[string]*cgraph.Node{}
 		for name := range t.services {
@@ -100,59 +103,67 @@ func (t *Topology) GraphAsPNG() ([]byte, error) {
 			}
 		}
 		for _, svc := range t.services {
-			if err := t.createEdge(graph, nodes, svc); err != nil {
+			if err := t.createEdges(graph, nodes, svc); err != nil {
 				return err
 			}
 		}
-		buf := new(bytes.Buffer)
 		if err := g.Render(graph, graphviz.PNG, buf); err != nil {
 			return errors.Wrap(err, "failed to render by graphviz")
 		}
-
-		result = buf.Bytes()
 		return nil
-
 	}); err != nil {
 		return nil, err
 	}
-	return result, nil
+	return buf.Bytes(), nil
 }
 
 func (t *Topology) ServiceGraphAsPNG(serviceName string) ([]byte, error) {
-	var result []byte
+	buf := new(bytes.Buffer)
 	if err := t.withGraph(func(g *graphviz.Graphviz, graph *cgraph.Graph) error {
-		svc, ok := t.services[serviceName]
-		if !ok {
-			return errors.Errorf("service not found: %s", serviceName)
-		}
 		nodes := map[string]*cgraph.Node{}
-		node, err := graph.CreateNode(svc.Name)
-		if err != nil {
-			return errors.Wrap(err, "failed to create graph node by graphviz")
-		}
-		nodes[serviceName] = node
-		for _, name := range  svc.Deps {
-			nodes[name], err = graph.CreateNode(name)
-			if err != nil {
-				return errors.Wrap(err, "failed to create graph node by graphviz")
-			}
-		}
-		if err := t.createEdge(graph, nodes, svc); err != nil {
+		if err := t.serviceGraph(g, graph, serviceName, nodes); err != nil {
 			return err
 		}
-		buf := new(bytes.Buffer)
 		if err := g.Render(graph, graphviz.PNG, buf); err != nil {
 			return errors.Wrap(err, "failed to render by graphviz")
 		}
-		result = buf.Bytes()
 		return nil
 	}); err != nil {
 		return nil, err
 	}
-	return result, nil
+
+	return buf.Bytes(), nil
 }
 
-func (t *Topology) createEdge(graph *cgraph.Graph, nodes map[string]*cgraph.Node, svc *Service) error {
+// TODO: refactoring
+func (t *Topology) serviceGraph(g *graphviz.Graphviz, graph *cgraph.Graph, serviceName string, nodes map[string]*cgraph.Node) error {
+	svc, ok := t.services[serviceName]
+	if !ok {
+		log.Printf("service not found: %s\n", serviceName)
+		return nil
+	}
+	_, ok = nodes[serviceName]
+	if ok {
+		return nil
+	}
+	node, err := graph.CreateNode(serviceName)
+	if err != nil {
+		return errors.Wrap(err, "failed to create graph node by graphviz")
+	}
+	nodes[serviceName] = node
+
+	for _, name := range  svc.Deps {
+		if err := t.serviceGraph(g, graph, name, nodes); err != nil {
+			return err
+		}
+	}
+	if err := t.createEdges(graph, nodes, svc); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *Topology) createEdges(graph *cgraph.Graph, nodes map[string]*cgraph.Node, svc *Service) error {
 	srcNode, ok := nodes[svc.Name]
 	if !ok {
 		log.Printf("service not found: %s", svc.Name)
@@ -171,7 +182,7 @@ func (t *Topology) createEdge(graph *cgraph.Graph, nodes map[string]*cgraph.Node
 	return nil
 }
 
-func (t *Topology) withGraph(f func(*graphviz.Graphviz, *cgraph.Graph) error) error {
+func (t *Topology) withGraph(f GraphvizFunc) error {
 	g := graphviz.New()
 	defer util.CloseWithLogOnErr(g)
 	graph, err := g.Graph()
