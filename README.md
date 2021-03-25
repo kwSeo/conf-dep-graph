@@ -1,10 +1,10 @@
 ## Getting Started
 
 ```
-go get github.com/kwSeo/conf-dep-graph
+go get github.com/kwSeo/dependency-graph
 ```
 
 ```
-conf-dep-graph -config-file=example/config.yaml
+dependency-graph -config-file=example/config.yaml
 ```
 
