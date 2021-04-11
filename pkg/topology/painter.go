@@ -4,8 +4,9 @@ package topology
 import (
 	"bytes"
 	"io/ioutil"
-	"log"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/goccy/go-graphviz"
 	"github.com/goccy/go-graphviz/cgraph"
 	"github.com/pkg/errors"
@@ -67,6 +68,7 @@ func LoadConfig(path string) (*Config, error) {
 type Topology struct {
 	cfg      *Config
 	services map[string]*Service
+	logger   log.Logger
 }
 
 func New(cfg *Config) *Topology {
@@ -78,23 +80,22 @@ func New(cfg *Config) *Topology {
 
 func (t *Topology) AddService(newSvc *Service) {
 	if _, exist := t.services[newSvc.Name]; exist {
-		log.Println("Already existed service")
+		level.Warn(t.logger).Log("msg", "Already existed service")
 		return
 	}
 	for _, svc := range t.services {
 		if svc.DependOn(newSvc) {
-			svc.AddDependency(*newSvc)
+			svc.AddDependency(newSvc)
 		}
 		if newSvc.DependOn(svc) {
-			newSvc.AddDependency(*svc)
+			newSvc.AddDependency(svc)
 		}
 	}
 	t.services[newSvc.Name] = newSvc
 }
 
 func (t *Topology) GraphAsPNG() ([]byte, error) {
-	buf := new(bytes.Buffer)
-	if err := t.withGraph(func(g *graphviz.Graphviz, graph *cgraph.Graph) (err error) {
+	return t.withGraph(graphviz.PNG, func(g *graphviz.Graphviz, graph *cgraph.Graph) (err error) {
 		nodes := map[string]*cgraph.Node{}
 		for name := range t.services {
 			nodes[name], err = graph.CreateNode(name)
@@ -107,39 +108,25 @@ func (t *Topology) GraphAsPNG() ([]byte, error) {
 				return err
 			}
 		}
-		if err := g.Render(graph, graphviz.PNG, buf); err != nil {
-			return errors.Wrap(err, "failed to render by graphviz")
-		}
 		return nil
-	}); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	})
 }
 
 func (t *Topology) ServiceGraphAsPNG(serviceName string) ([]byte, error) {
-	buf := new(bytes.Buffer)
-	if err := t.withGraph(func(g *graphviz.Graphviz, graph *cgraph.Graph) error {
+	return t.withGraph(graphviz.PNG, func(g *graphviz.Graphviz, graph *cgraph.Graph) error {
 		nodes := map[string]*cgraph.Node{}
 		if err := t.serviceGraph(g, graph, serviceName, nodes); err != nil {
 			return err
 		}
-		if err := g.Render(graph, graphviz.PNG, buf); err != nil {
-			return errors.Wrap(err, "failed to render by graphviz")
-		}
 		return nil
-	}); err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
+	})
 }
 
 // TODO: refactoring
 func (t *Topology) serviceGraph(g *graphviz.Graphviz, graph *cgraph.Graph, serviceName string, nodes map[string]*cgraph.Node) error {
 	svc, ok := t.services[serviceName]
 	if !ok {
-		log.Printf("service not found: %s\n", serviceName)
+		level.Warn(t.logger).Log("msg", "service not found", "service", serviceName)
 		return nil
 	}
 	_, ok = nodes[serviceName]
@@ -152,8 +139,8 @@ func (t *Topology) serviceGraph(g *graphviz.Graphviz, graph *cgraph.Graph, servi
 	}
 	nodes[serviceName] = node
 
-	for _, name := range  svc.Deps {
-		if err := t.serviceGraph(g, graph, name, nodes); err != nil {
+	for _, dep := range svc.Deps {
+		if err := t.serviceGraph(g, graph, dep.Name, nodes); err != nil {
 			return err
 		}
 	}
@@ -166,10 +153,11 @@ func (t *Topology) serviceGraph(g *graphviz.Graphviz, graph *cgraph.Graph, servi
 func (t *Topology) createEdges(graph *cgraph.Graph, nodes map[string]*cgraph.Node, svc *Service) error {
 	srcNode, ok := nodes[svc.Name]
 	if !ok {
-		log.Printf("service not found: %s", svc.Name)
+		level.Warn(t.logger).Log("msg", "service not found", "service", svc.Name)
 		return nil
 	}
-	for _, depName := range svc.Deps {
+	for _, dep := range svc.Deps {
+		depName := dep.Name
 		dstNode, ok := nodes[depName]
 		if !ok {
 			continue
@@ -182,26 +170,22 @@ func (t *Topology) createEdges(graph *cgraph.Graph, nodes map[string]*cgraph.Nod
 	return nil
 }
 
-func (t *Topology) withGraph(f GraphvizFunc) error {
+func (t *Topology) withGraph(format graphviz.Format, f GraphvizFunc) ([]byte, error) {
 	g := graphviz.New()
 	defer util.CloseWithLogOnErr(g)
 	graph, err := g.Graph()
 	if err != nil {
-		return errors.Wrap(err, "failed to create graph by graphviz")
+		return nil, errors.Wrap(err, "failed to create graph by graphviz")
 	}
 	defer util.CloseWithLogOnErr(graph)
 	graph.SetLayout(string(t.cfg.GetLayout()))
 
-	return f(g, graph)
+	buf := new(bytes.Buffer)
+	if err := g.Render(graph, format, buf); err != nil {
+		return nil, errors.Wrap(err, "failed to render by graphviz")
+	}
+	if err := f(g, graph); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
-
-// func (t *Topology) CreateServices() ([]*Service, error) {
-// 	services := map[string]*Service{}
-// 	for _, svcCfg := range t.cfg.Services {
-// 		content, err := read(svcCfg.TargetFile)
-// 		if err != nil {
-// 			return nil, errors.Wrap(err, "failed to read target file")
-// 		}
-// 	}
-// 	return services, nil
-// }

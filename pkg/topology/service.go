@@ -9,10 +9,10 @@ import (
 )
 
 type Service struct {
-	Name       string   `yaml:"name"`
-	Domain     string   `yaml:"domain"`
-	TargetFile string   `yaml:"target_file"`
-	Deps       []string `yaml:"deps"`
+	Name       string     `yaml:"name"`
+	Keyword    string     `yaml:"keyword"`
+	TargetFile string     `yaml:"target_file"`
+	Deps       []*Service `yaml:"deps"`
 
 	Content []byte `yaml:"-"`
 }
@@ -33,11 +33,11 @@ func (s *Service) LoadTargetFile() (content []byte, err error) {
 }
 
 func (s *Service) DependOn(other *Service) bool {
-	return strings.Contains(string(s.Content), other.Domain)
+	return strings.Contains(string(s.Content), other.Keyword)
 }
 
-func (s *Service) AddDependency(other Service) {
-	s.Deps = append(s.Deps, other.Name)
+func (s *Service) AddDependency(other *Service) {
+	s.Deps = append(s.Deps, other)
 }
 
 func pathTypeOf(path string) PathType {
